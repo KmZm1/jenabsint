@@ -11,7 +11,7 @@ Built for Android/Termux (no root required). Runs anywhere with Python 3.11+ and
   ██║██╔══╝  ██║╚██╗██║██╔══██║██╔══██╗╚════██║██║██║╚██╗██║   ██║
   ██║███████╗██║ ╚████║██║  ██║██████╔╝███████║██║██║ ╚████║   ██║
   ╚═╝╚══════╝╚═╝  ╚═══╝╚═╝  ╚═╝╚═════╝ ╚══════╝╚═╝╚═╝  ╚═══╝   ╚═╝
-              Termux OSINT console · v1.1
+              Termux OSINT console · v1.2
 ```
 
 ## Features
@@ -89,7 +89,7 @@ osint urls <domain>       # historical URLs (gau + waybackurls)
 osint waymore <domain>    # deep URL harvest (Wayback + CommonCrawl)
 osint links <url>         # links/params from pages & JS (xnLinkFinder)
 osint crawl <url>         # katana endpoint crawl
-osint dork <query>        # Google dorking (go-dork)
+osint dork <query>        # DuckDuckGo dork search (ddgr)
 osint waf <url>           # WAF vendor detection (wafw00f)
 osint cloud <keyword>     # public S3/Azure/GCP scan (cloud_enum)
 osint dark <query>        # OnionSearch via Tor
@@ -115,7 +115,7 @@ osint check               # toolchain status
 | Probing / crawling | `httpx`, `naabu`, `katana`, `nuclei`, `ffuf`, `xnLinkFinder` |
 | URL history | `gau`, `waybackurls`, `waymore` |
 | People / hosts | `theHarvester`, `phoneinfoga` |
-| Secrets / dorking | `gitleaks`, `go-dork` |
+| Secrets / dorking | `gitleaks`, `ddgr` |
 | Dark web | `onionsearch` (via Tor) |
 | Cloud exposure | `cloud_enum` |
 | WAF detection | `wafw00f` |
@@ -165,6 +165,7 @@ Adjust the Python version in the path as needed. After that, socialscan, maigret
 - **asnmap needs a free ProjectDiscovery key** — run `asnmap -auth` once, or set `PDCP_API_KEY`. Everything else works without keys.
 - **onionsearch needs Tor running** — the TUI starts it automatically (direct, then Snowflake fallback); the `osint dark` wrapper expects Tor already listening on `127.0.0.1:9050`.
 - **theHarvester source lists** — engine names change between versions; the current defaults (`otx,rapiddns,duckduckgo,crtsh`) are validated against v5.0.0.
+- **Dork search returns nothing** — DuckDuckGo rate-limits automated queries from one IP (`HTTP 202`); wait a few minutes and retry. Dorking via Tor exits is blocked by DDG (`403`), so use a direct connection.
 
 ## Disclaimer
 

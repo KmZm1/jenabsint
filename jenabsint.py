@@ -26,7 +26,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-VERSION = "1.1"
+VERSION = "1.2"
 
 HOME = Path.home()
 GOBIN = HOME / "go" / "bin"
@@ -974,10 +974,22 @@ def t_gitleaks(t, d):
                     label=f"gitleaks — {path}"), d / "leaks.json"
 
 
-def t_godork(t, d):
-    return run_tool(["go-dork", "-q", t, "-e", "google", "-p", "1", "-s"],
-                    outfile=d / "dorks.txt", timeout=300,
-                    label=f"go-dork — {t}"), d / "dorks.txt"
+def t_ddgr(t, d):
+    f = d / "dorks.json"
+    r = run_tool(["ddgr", "--json", "--noprompt", "--num", "15", t],
+                 outfile=f, timeout=120, label=f"ddgr — {t}")
+    txt = d / "dorks.txt"
+    try:
+        rows = json.loads(Path(f).read_text(encoding="utf-8", errors="replace") or "[]")
+    except Exception:
+        rows = None
+    if rows:
+        txt.write_text("".join(f"{x.get('title','')} — {x.get('url','')}\n" for x in rows),
+                       encoding="utf-8")
+    else:
+        txt.write_text("(no results — DuckDuckGo may be rate-limiting this IP; "
+                       "retry in a few minutes)\n", encoding="utf-8")
+    return r, d / "dorks.txt"
 
 
 def t_ipinfo(t, d):
@@ -1041,7 +1053,7 @@ TOOL_MENU = [
     ("waybackurls", "Wayback Machine URLs", "Domain", "tools", t_waybackurls),
     ("waymore", "deep URL harvest (wayback + CC)", "Domain", "urls", t_waymore),
     ("xnLinkFinder", "links/params from JS & pages", "URL", "urls", t_xnlinkfinder),
-    ("go-dork", "Google dorking", "Dork query", "tools", t_godork),
+    ("ddgr", "DuckDuckGo dork search (JSON)", "Dork query", "tools", t_ddgr),
     ("— network & misc —", None),
     ("naabu", "port scan (top 100)", "Host", "tools", t_naabu),
     ("nmap", "top 1000 ports", "Host", "tools", t_nmap),
@@ -1121,7 +1133,7 @@ ALL_TOOLS = [
     "subfinder", "amass", "assetfinder", "dnsx", "dnsrecon", "dnstwist",
     "httpx", "naabu", "katana", "nuclei", "ffuf", "tlsx", "cdncheck",
     "asnmap", "alterx", "gau", "waybackurls", "waymore", "xnLinkFinder",
-    "phoneinfoga", "dnsgen", "shodan", "ipinfo", "gitleaks", "go-dork",
+    "phoneinfoga", "dnsgen", "shodan", "ipinfo", "gitleaks", "ddgr",
     "socid_extractor", "instaloader", "wafw00f", "cloud_enum", "onionsearch",
     "whois", "dig", "nmap", "exiftool",
     "jq", "curl", "tor", "proxychains4",

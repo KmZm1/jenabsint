@@ -43,7 +43,7 @@ Commands:
   osint waymore <domain>      deep URL harvest (Wayback + CommonCrawl)
   osint links <url>           links/params from pages & JS (xnLinkFinder)
   osint crawl <url>           Crawl site for endpoints/URLs (katana)
-  osint dork <query>          Google dorking (go-dork)
+  osint dork <query>          DuckDuckGo dork search (ddgr)
   osint waf <url>             detect WAF vendor (wafw00f)
   osint cloud <keyword>       public S3/Azure/GCP storage scan (cloud_enum)
   osint dark <query>          OnionSearch via Tor (requires Tor on 127.0.0.1:9050)
@@ -65,7 +65,7 @@ cmd_check() {
                subfinder amass assetfinder dnsx dnsrecon dnstwist httpx naabu
                katana nuclei ffuf tlsx cdncheck asnmap alterx gau waybackurls
                waymore xnLinkFinder phoneinfoga dnsgen shodan ipinfo gitleaks
-               go-dork socid_extractor instaloader wafw00f cloud_enum onionsearch
+               ddgr socid_extractor instaloader wafw00f cloud_enum onionsearch
                whois dig nmap exiftool jq curl tor proxychains4)
   local missing=0
   printf '%-14s %s\n' "TOOL" "STATUS"
@@ -300,9 +300,15 @@ cmd_links() {
 cmd_dork() {
   local q="${1:?usage: osint dork <query>}" dir
   dir=$(newdir dorks "$q"); say "query: $q  ->  $dir"
-  need go-dork || return 1
-  go-dork -q "$q" -e google -p 1 -s >"$dir/dorks.txt" 2>&1
-  ok "$(wc -l <"$dir/dorks.txt") lines -> $dir/dorks.txt"
+  need ddgr || return 1
+  ddgr --json --noprompt --num 15 "$q" </dev/null >"$dir/dorks.json" 2>"$dir/ddgr.log"
+  if jq -e 'length > 0' "$dir/dorks.json" >/dev/null 2>&1; then
+    jq -r '.[] | .title + " — " + .url' "$dir/dorks.json" >"$dir/dorks.txt"
+    ok "$(jq length "$dir/dorks.json") results -> $dir/dorks.txt"
+  else
+    warn "no results — DuckDuckGo rate-limits automated queries (HTTP 202); retry in a few minutes"
+    return 1
+  fi
 }
 
 cmd_waf() {
