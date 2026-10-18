@@ -4,8 +4,8 @@
 JenabSint — interactive OSINT console for Termux.
 
 A friendly menu front-end over the installed OSINT toolchain
-(sherlock, holehe, maigret, subfinder, amass, dnsx, httpx, katana,
-nuclei, theHarvester, phoneinfoga, ...). Pure standard library.
+(sherlock, blackbird, holehe, maigret, subfinder, amass, dnsx, httpx,
+katana, nuclei, theHarvester, phoneinfoga, gitleaks, ...). Pure stdlib.
 
 Run:   jenabsint          (installed launcher)
    or: python3 ~/JenabSint/jenabsint.py
@@ -15,6 +15,7 @@ import itertools
 import json
 import os
 import re
+import shlex
 import shutil
 import signal
 import socket
@@ -25,7 +26,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-VERSION = "1.0"
+VERSION = "1.1"
 
 HOME = Path.home()
 GOBIN = HOME / "go" / "bin"
@@ -458,6 +459,12 @@ def act_username():
                  outfile=outdir / "maigret.stdout.txt", timeout=1800,
                  label=f"maigret — '{user}' (200 sites)")
 
+    if binary("blackbird"):
+        run_tool(["bash", "-lc",
+                  f"cd {shlex.quote(str(outdir))} && blackbird -u {shlex.quote(user)} --csv"],
+                 outfile=outdir / "blackbird.stdout.txt", timeout=900,
+                 label=f"blackbird — '{user}' (600+ sites)")
+
     summary_box(user, outdir, hits, "sherlock hits")
     primary = outdir / "sherlock.txt" if wc_lines(outdir / "sherlock.txt") else outdir / "socialscan.txt"
     preview(primary, limit=18)
@@ -473,6 +480,12 @@ def act_email():
                  label=f"holehe — {email}")
     run_tool(["socialscan", email], outfile=outdir / "socialscan.txt",
              timeout=300, label=f"socialscan — {email}")
+
+    if binary("blackbird"):
+        run_tool(["bash", "-lc",
+                  f"cd {shlex.quote(str(outdir))} && blackbird -e {shlex.quote(email)} --csv"],
+                 outfile=outdir / "blackbird.stdout.txt", timeout=900,
+                 label=f"blackbird — {email} (600+ sites)")
 
     summary_box(email, outdir)
     preview(outdir / "holehe.txt", limit=18)
@@ -880,12 +893,130 @@ def t_custom(_t, d):
                     timeout=900, label=f"bash — {trunc(cmd, 40)}"), d / "custom_output.txt"
 
 
+def t_blackbird(t, d):
+    flag = "-e" if "@" in t else "-u"
+    return run_tool(["bash", "-lc",
+                     f"cd {shlex.quote(str(d))} && blackbird {flag} {shlex.quote(t)} --csv"],
+                    outfile=d / "blackbird.txt", timeout=900,
+                    label=f"blackbird — {t}"), d / "blackbird.txt"
+
+
+def t_socid(t, d):
+    return run_tool(["socid_extractor", "--url", t, "-v"],
+                    outfile=d / "socid.txt", timeout=180,
+                    label=f"socid_extractor — {t}"), d / "socid.txt"
+
+
+def t_instaloader(t, d):
+    profile = t.strip().lstrip("@").strip("/")
+    return run_tool(["bash", "-lc",
+                     f"cd {shlex.quote(str(d))} && instaloader --no-videos --count 25 {shlex.quote(profile)}"],
+                    outfile=d / "instaloader.txt", timeout=900,
+                    label=f"instaloader — @{profile}"), d / "instaloader.txt"
+
+
+def t_dnsrecon(t, d):
+    return run_tool(["dnsrecon", "-d", t], outfile=d / "dnsrecon.txt",
+                    timeout=600, label=f"dnsrecon — {t}"), d / "dnsrecon.txt"
+
+
+def t_dnstwist(t, d):
+    return run_tool(["dnstwist", "--registered", "--format", "csv",
+                     "-o", str(d / "dnstwist.csv"), t],
+                    outfile=d / "dnstwist.stdout.txt", timeout=600,
+                    label=f"dnstwist — {t}"), d / "dnstwist.csv"
+
+
+def t_cloudenum(t, d):
+    keyword = t.split(".")[0]
+    return run_tool(["cloud_enum", "-k", keyword, "-l", str(d / "cloud_enum.txt")],
+                    outfile=d / "cloud_enum.stdout.txt", timeout=900,
+                    label=f"cloud_enum — '{keyword}'"), d / "cloud_enum.txt"
+
+
+def t_wafw00f(t, d):
+    url = t if t.startswith(("http://", "https://")) else "https://" + t
+    return run_tool(["wafw00f", url], outfile=d / "wafw00f.txt",
+                    timeout=180, label=f"wafw00f — {url}"), d / "wafw00f.txt"
+
+
+def t_waymore(t, d):
+    return run_tool(["waymore", "-i", t, "-mode", "U", "-oU", str(d / "urls.txt"),
+                     "-t", "15", "-p", "3"],
+                    outfile=d / "waymore.stdout.txt", timeout=900,
+                    label=f"waymore — {t}"), d / "urls.txt"
+
+
+def t_onionsearch(t, d):
+    if not tor_ready():
+        out(f"  {DIM}Tor is not running — starting it (Snowflake fallback if needed)…{RST}")
+        if not start_tor():
+            warn("could not bring Tor up — skipping onionsearch")
+            return None, None
+    return run_tool(["onionsearch", t, "--output", str(d / "onionsearch.txt"),
+                     "--limit", "2", "--mp_units", "2", "--continuous_write", "1"],
+                    outfile=d / "onionsearch.stdout.txt", timeout=600,
+                    label=f"onionsearch — '{t}' via Tor"), d / "onionsearch.txt"
+
+
+def t_xnlinkfinder(t, d):
+    url = t if t.startswith(("http://", "https://")) else "https://" + t
+    return run_tool(["xnLinkFinder", "-i", url, "-o", str(d / "links.txt")],
+                    outfile=d / "xnLinkFinder.txt", timeout=600,
+                    label=f"xnLinkFinder — {url}"), d / "links.txt"
+
+
+def t_gitleaks(t, d):
+    path = str(Path(t).expanduser())
+    return run_tool(["gitleaks", "dir", path, "--report-format", "json",
+                     "--report-path", str(d / "leaks.json"), "-v"],
+                    outfile=d / "gitleaks.log", timeout=900,
+                    label=f"gitleaks — {path}"), d / "leaks.json"
+
+
+def t_godork(t, d):
+    return run_tool(["go-dork", "-q", t, "-e", "google", "-p", "1", "-s"],
+                    outfile=d / "dorks.txt", timeout=300,
+                    label=f"go-dork — {t}"), d / "dorks.txt"
+
+
+def t_ipinfo(t, d):
+    return run_tool(["ipinfo", t], outfile=d / "ipinfo.txt", timeout=120,
+                    label=f"ipinfo — {t}"), d / "ipinfo.txt"
+
+
+def t_asnmap(t, d):
+    return run_tool(["asnmap", "-d", t, "-silent"], outfile=d / "asnmap.txt",
+                    timeout=300, label=f"asnmap — {t} (needs PDCP key)"), d / "asnmap.txt"
+
+
+def t_cdncheck(t, d):
+    return run_tool(["bash", "-lc", f"echo {shlex.quote(t)} | cdncheck -resp"],
+                    outfile=d / "cdncheck.txt", timeout=120,
+                    label=f"cdncheck — {t}"), d / "cdncheck.txt"
+
+
+def t_tlsx(t, d):
+    return run_tool(["tlsx", "-u", t, "-silent", "-cn", "-san"],
+                    outfile=d / "tlsx.txt", timeout=180,
+                    label=f"tlsx — {t}"), d / "tlsx.txt"
+
+
+def t_alterx(t, d):
+    return run_tool(["bash", "-lc", f"echo {shlex.quote(t)} | alterx -silent"],
+                    outfile=d / "alterx.txt", timeout=120,
+                    label=f"alterx — {t}"), d / "alterx.txt"
+
+
 TOOL_MENU = [
     ("— usernames & emails —", None),
     ("sherlock", "username → 400+ sites", "Username", "users", t_sherlock),
     ("maigret", "username → 200 sites, reports", "Username", "users", t_maigret),
+    ("blackbird", "username/email → 600+ sites (CSV)", "Username or email", "users", t_blackbird),
     ("socialscan", "username/email availability", "Username or email", "users", t_socialscan),
     ("holehe", "email → registered accounts", "Email", "emails", t_holehe),
+    ("socid_extractor", "profile URL → emails/phones/names", "Profile URL", "users", t_socid),
+    ("instaloader", "Instagram profile → posts/media", "Instagram username", "users", t_instaloader),
     ("— domains & dns —", None),
     ("subfinder", "passive subdomain enum", "Domain", "tools", t_subfinder),
     ("amass", "deep subdomain enum (slow)", "Domain", "tools", t_amass_note),
@@ -893,22 +1024,37 @@ TOOL_MENU = [
     ("crt.sh", "certificate transparency", "Domain", "tools", t_crtsh),
     ("dnsx", "brute-force with 100k wordlist", "Domain", "tools", t_dnsx_brute),
     ("dig", "A / NS / MX / TXT records", "Domain", "tools", t_dig),
+    ("dnsrecon", "standard DNS enum (+ zone transfer)", "Domain", "domains", t_dnsrecon),
+    ("dnstwist", "typosquat / look-alike domains", "Domain", "domains", t_dnstwist),
+    ("alterx", "subdomain permutation generator", "Domain", "tools", t_alterx),
+    ("tlsx", "TLS certificate intel (CN/SAN)", "Host or domain", "tools", t_tlsx),
+    ("cdncheck", "CDN / WAF detection", "Host or IP", "tools", t_cdncheck),
+    ("asnmap", "domain/IP → ASN + CIDR (PDCP key)", "Domain or IP", "tools", t_asnmap),
     ("— web —", None),
     ("httpx", "probe status/title/tech", "URL or host", "tools", t_httpx),
     ("katana", "crawl site (depth 3)", "URL", "tools", t_katana),
     ("nuclei", "vulnerability scan", "URL", "tools", t_nuclei),
     ("nuclei-update", "download templates (~250MB)", "", "tools", t_nuclei_update),
     ("ffuf", "directory fuzz (wordlist FUZZ)", "URL containing FUZZ", "tools", t_ffuf),
+    ("wafw00f", "detect WAF vendor", "URL or host", "tools", t_wafw00f),
     ("gau", "historical URLs", "Domain", "tools", t_gau),
     ("waybackurls", "Wayback Machine URLs", "Domain", "tools", t_waybackurls),
+    ("waymore", "deep URL harvest (wayback + CC)", "Domain", "urls", t_waymore),
+    ("xnLinkFinder", "links/params from JS & pages", "URL", "urls", t_xnlinkfinder),
+    ("go-dork", "Google dorking", "Dork query", "tools", t_godork),
     ("— network & misc —", None),
     ("naabu", "port scan (top 100)", "Host", "tools", t_naabu),
     ("nmap", "top 1000 ports", "Host", "tools", t_nmap),
     ("whois", "registration data", "Domain or IP", "tools", t_whois),
     ("shodan", "Shodan search", "Query", "tools", t_shodan),
+    ("ipinfo", "IP / ASN / geo intel", "IP, ASN or host", "ip", t_ipinfo),
     ("phoneinfoga", "phone footprint", "+E.164 number", "tools", t_phoneinfoga),
     ("theHarvester", "emails/hosts via search engines", "Domain", "tools", t_harvester),
     ("exiftool", "file metadata", "File path", "tools", t_exiftool),
+    ("gitleaks", "secrets in a local directory", "Local directory", "tools", t_gitleaks),
+    ("— dark web & cloud —", None),
+    ("onionsearch", "search .onion engines via Tor", "Search query", "tools", t_onionsearch),
+    ("cloud_enum", "public S3/Azure/GCP storage", "Domain (keyword used)", "tools", t_cloudenum),
     ("— custom —", None),
     ("custom", "run any shell command", "", "tools", t_custom),
 ]
@@ -971,10 +1117,13 @@ def menu_individual():
 # --------------------------------------------------------------------------
 
 ALL_TOOLS = [
-    "sherlock", "maigret", "socialscan", "holehe", "theHarvester",
-    "subfinder", "amass", "assetfinder", "dnsx", "httpx", "naabu",
-    "katana", "nuclei", "ffuf", "gau", "waybackurls", "phoneinfoga",
-    "dnsgen", "shodan", "whois", "dig", "nmap", "exiftool",
+    "sherlock", "maigret", "blackbird", "socialscan", "holehe", "theHarvester",
+    "subfinder", "amass", "assetfinder", "dnsx", "dnsrecon", "dnstwist",
+    "httpx", "naabu", "katana", "nuclei", "ffuf", "tlsx", "cdncheck",
+    "asnmap", "alterx", "gau", "waybackurls", "waymore", "xnLinkFinder",
+    "phoneinfoga", "dnsgen", "shodan", "ipinfo", "gitleaks", "go-dork",
+    "socid_extractor", "instaloader", "wafw00f", "cloud_enum", "onionsearch",
+    "whois", "dig", "nmap", "exiftool",
     "jq", "curl", "tor", "proxychains4",
     "snowflake-client", "lyrebird",
 ]

@@ -31,15 +31,26 @@ usage() {
 osint — OSINT toolkit wrapper
 
 Commands:
-  osint user <username>       Sherlock + Maigret + socialscan (username footprint)
-  osint email <email>         holehe + socialscan (account registration footprint)
+  osint user <username>       sherlock + maigret + socialscan + blackbird
+  osint email <email>         holehe + socialscan + blackbird
+  osint gh <user|email>       blackbird — 600+ site account search (CSV)
+  osint ig <username>         Instagram profile media (instaloader)
   osint domain <domain>       subdomain enum (subfinder/assetfinder/crt.sh) + DNS + httpx + whois
-  osint ip <ip|host>          whois + reverse DNS + nmap top-port scan
+  osint dns <domain>          dnsrecon standard enumeration (+ zone transfer)
+  osint twist <domain>        dnstwist typosquat / look-alike domains
+  osint ip <ip|host>          whois + reverse DNS + nmap + ipinfo
   osint urls <domain>         Historical/broken URLs (gau + waybackurls)
+  osint waymore <domain>      deep URL harvest (Wayback + CommonCrawl)
+  osint links <url>           links/params from pages & JS (xnLinkFinder)
   osint crawl <url>           Crawl site for endpoints/URLs (katana)
+  osint dork <query>          Google dorking (go-dork)
+  osint waf <url>             detect WAF vendor (wafw00f)
+  osint cloud <keyword>       public S3/Azure/GCP storage scan (cloud_enum)
+  osint dark <query>          OnionSearch via Tor (requires Tor on 127.0.0.1:9050)
+  osint leaks <dir>           Secret scanning with gitleaks
   osint phone <number>        PhoneInfoga scan (use E.164, e.g. +12025550123)
   osint meta <file>           Metadata extraction (exiftool)
-  osint harv <domain>         theHarvester (search engines + crtsh)
+  osint harv <domain>         theHarvester (otx, rapiddns, duckduckgo, crtsh)
   osint brute <domain>        DNS brute-force via dnsx + wordlists
   osint shodan <query>        Shodan search (needs `shodan init <API key>` once)
   osint check                 Show which tools are installed
@@ -50,9 +61,11 @@ EOF
 }
 
 cmd_check() {
-  local tools=(sherlock maigret socialscan holehe theHarvester
-               subfinder amass assetfinder dnsx httpx naabu katana nuclei ffuf
-               gau waybackurls phoneinfoga dnsgen shodan
+  local tools=(sherlock maigret blackbird socialscan holehe theHarvester
+               subfinder amass assetfinder dnsx dnsrecon dnstwist httpx naabu
+               katana nuclei ffuf tlsx cdncheck asnmap alterx gau waybackurls
+               waymore xnLinkFinder phoneinfoga dnsgen shodan ipinfo gitleaks
+               go-dork socid_extractor instaloader wafw00f cloud_enum onionsearch
                whois dig nmap exiftool jq curl tor proxychains4)
   local missing=0
   printf '%-14s %s\n' "TOOL" "STATUS"
@@ -79,6 +92,10 @@ cmd_user() {
     maigret "$user" --top-sites 200 --timeout 15 --folderoutput "$dir/maigret" --no-progressbar --no-color >"$dir/maigret.log" 2>&1
     ok "maigret done ($dir/maigret/)"
   fi
+  if need blackbird; then
+    say "blackbird (600+ sites)..."
+    (cd "$dir" && blackbird -u "$user" --csv >blackbird.log 2>&1) && ok "blackbird done ($dir/*.csv)"
+  fi
   ok "results in $dir"
 }
 
@@ -93,6 +110,10 @@ cmd_email() {
   if need socialscan; then
     say "socialscan..."
     socialscan "$email" >"$dir/socialscan.txt" 2>&1 && ok "socialscan done"
+  fi
+  if need blackbird; then
+    say "blackbird (email, 600+ sites)..."
+    (cd "$dir" && blackbird -e "$email" --csv >blackbird.log 2>&1) && ok "blackbird done ($dir/*.csv)"
   fi
   ok "results in $dir"
 }
@@ -146,6 +167,10 @@ cmd_ip() {
   whois "$target" >"$dir/whois.txt" 2>&1 && ok "whois saved"
   { echo "== reverse DNS =="; dig +short -x "$target" 2>/dev/null;
     echo "== A =="; dig +short "$target" 2>/dev/null; } >"$dir/dns.txt" 2>&1
+  if need ipinfo; then
+    say "ipinfo..."
+    ipinfo "$target" >"$dir/ipinfo.txt" 2>&1 && ok "ipinfo saved"
+  fi
   if command -v nmap >/dev/null 2>&1; then
     say "nmap top-1000 TCP (connect scan)..."
     nmap -Pn -T4 --top-ports 1000 --open "$target" -oN "$dir/nmap.txt" >/dev/null 2>&1
@@ -232,12 +257,117 @@ cmd_shodan() {
   ok "$(wc -l <"$dir/results.txt") rows -> $dir/results.txt"
 }
 
+cmd_ig() {
+  local user="${1:?usage: osint ig <username>}" dir
+  dir=$(newdir users "$user"); say "target: @${user#@}  ->  $dir"
+  need instaloader || return 1
+  (cd "$dir" && instaloader --no-videos --count 25 "${user#@}" >instaloader.log 2>&1) \
+    && ok "instaloader done -> $dir"
+}
+
+cmd_dns() {
+  local domain="${1:?usage: osint dns <domain>}" dir
+  dir=$(newdir domains "$domain"); say "target: $domain  ->  $dir"
+  need dnsrecon || return 1
+  dnsrecon -d "$domain" >"$dir/dnsrecon.txt" 2>&1
+  ok "dnsrecon done -> $dir/dnsrecon.txt"
+}
+
+cmd_twist() {
+  local domain="${1:?usage: osint twist <domain>}" dir
+  dir=$(newdir domains "$domain"); say "target: $domain  ->  $dir"
+  need dnstwist || return 1
+  dnstwist --registered --format csv -o "$dir/dnstwist.csv" "$domain" >"$dir/dnstwist.log" 2>&1
+  ok "dnstwist: $(wc -l <"$dir/dnstwist.csv" 2>/dev/null || echo 0) rows -> $dir/dnstwist.csv"
+}
+
+cmd_waymore() {
+  local domain="${1:?usage: osint waymore <domain>}" dir
+  dir=$(newdir urls "$domain"); say "target: $domain  ->  $dir"
+  need waymore || return 1
+  waymore -i "$domain" -mode U -oU "$dir/urls.txt" -t 15 -p 3 >"$dir/waymore.log" 2>&1
+  ok "unique URLs: $(wc -l <"$dir/urls.txt" 2>/dev/null || echo 0) -> $dir/urls.txt"
+}
+
+cmd_links() {
+  local url="${1:?usage: osint links <url>}" dir
+  dir=$(newdir urls "$url"); say "target: $url  ->  $dir"
+  need xnLinkFinder || return 1
+  xnLinkFinder -i "$url" -o "$dir/links.txt" >"$dir/xnLinkFinder.log" 2>&1
+  ok "links: $(wc -l <"$dir/links.txt" 2>/dev/null || echo 0) -> $dir/links.txt"
+}
+
+cmd_dork() {
+  local q="${1:?usage: osint dork <query>}" dir
+  dir=$(newdir dorks "$q"); say "query: $q  ->  $dir"
+  need go-dork || return 1
+  go-dork -q "$q" -e google -p 1 -s >"$dir/dorks.txt" 2>&1
+  ok "$(wc -l <"$dir/dorks.txt") lines -> $dir/dorks.txt"
+}
+
+cmd_waf() {
+  local url="${1:?usage: osint waf <url>}" dir
+  case "$url" in http*) ;; *) url="https://$url";; esac
+  dir=$(newdir tools "$url"); say "target: $url  ->  $dir"
+  need wafw00f || return 1
+  wafw00f "$url" >"$dir/waf.txt" 2>&1
+  ok "wafw00f done -> $dir/waf.txt"
+}
+
+cmd_cloud() {
+  local kw="${1:?usage: osint cloud <keyword>}" dir
+  dir=$(newdir tools "$kw"); say "keyword: $kw  ->  $dir"
+  need cloud_enum || return 1
+  cloud_enum -k "$kw" -l "$dir/cloud_enum.txt" >"$dir/cloud_enum.log" 2>&1
+  ok "cloud_enum done -> $dir/cloud_enum.txt"
+}
+
+cmd_gh() {
+  local t="${1:?usage: osint gh <username|email>}" dir flag="-u"
+  case "$t" in *@*) flag="-e";; esac
+  dir=$(newdir users "$t"); say "target: $t  ->  $dir"
+  need blackbird || return 1
+  (cd "$dir" && blackbird "$flag" "$t" --csv >blackbird.log 2>&1) && ok "blackbird done -> $dir"
+}
+
+cmd_dark() {
+  local q="${1:?usage: osint dark <query>}" dir
+  dir=$(newdir tools "$q"); say "query: $q  ->  $dir"
+  need onionsearch || return 1
+  if ! (exec 3<>/dev/tcp/127.0.0.1/9050) 2>/dev/null; then
+    warn "Tor SOCKS not reachable on 127.0.0.1:9050 — start Tor first (e.g. via JenabSint settings)"
+    return 1
+  fi
+  onionsearch "$q" --output "$dir/onionsearch.txt" --limit 2 --mp_units 2 --continuous_write 1 >"$dir/onionsearch.log" 2>&1
+  ok "onionsearch done -> $dir/onionsearch.txt"
+}
+
+cmd_leaks() {
+  local path="${1:?usage: osint leaks <dir>}" dir
+  [ -d "$path" ] || die "no such directory: $path"
+  dir=$(newdir tools "$(basename "$path")"); say "target: $path  ->  $dir"
+  need gitleaks || return 1
+  gitleaks dir "$path" --report-format json --report-path "$dir/leaks.json" -v >"$dir/gitleaks.log" 2>&1
+  ok "gitleaks done -> $dir/leaks.json"
+}
+
 case "${1:-help}" in
   user)   shift; cmd_user   "$@";;
   email)  shift; cmd_email  "$@";;
+  gh)     shift; cmd_gh     "$@";;
+  ig)     shift; cmd_ig     "$@";;
   domain) shift; cmd_domain "$@";;
+  dns)    shift; cmd_dns    "$@";;
+  twist)  shift; cmd_twist  "$@";;
   ip|host) shift; cmd_ip   "$@";;
   urls)   shift; cmd_urls   "$@";;
+  waymore) shift; cmd_waymore "$@";;
+  links)  shift; cmd_links  "$@";;
+  dork)   shift; cmd_dork   "$@";;
+  waf)    shift; cmd_waf    "$@";;
+  cloud)  shift; cmd_cloud  "$@";;
+  dark)   shift; cmd_dark   "$@";;
+  leaks)  shift; cmd_leaks  "$@";;
   crawl)  shift; cmd_crawl  "$@";;
   phone)  shift; cmd_phone  "$@";;
   meta)   shift; cmd_meta   "$@";;

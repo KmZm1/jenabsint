@@ -11,16 +11,16 @@ Built for Android/Termux (no root required). Runs anywhere with Python 3.11+ and
   ██║██╔══╝  ██║╚██╗██║██╔══██║██╔══██╗╚════██║██║██║╚██╗██║   ██║
   ██║███████╗██║ ╚████║██║  ██║██████╔╝███████║██║██║ ╚████║   ██║
   ╚═╝╚══════╝╚═╝  ╚═══╝╚═╝  ╚═╝╚═════╝ ╚══════╝╚═╝╚═╝  ╚═══╝   ╚═╝
-              Termux OSINT console · v1.0
+              Termux OSINT console · v1.1
 ```
 
 ## Features
 
 - **Animated TUI** — ASCII banner, spinner progress, width-aware layout. Pure Python standard library, zero pip dependencies for the UI itself.
 - **14 guided workflows** — username footprint, email footprint, domain recon, DNS brute force, URL harvesting, web crawl, IP/host recon, phone lookup, file metadata, theHarvester, Shodan, doctor, settings.
-- **Individual tool picker** — run any single tool from the toolkit (25 entries, incl. `custom` for free-form commands).
+- **Individual tool picker** — run any single tool from the toolkit (40+ entries, incl. `custom` for free-form commands).
 - **Built-in Tor mode** — two-phase connect: tries direct Tor first, automatically falls back to Snowflake bridges when the network blocks plain Tor. `stop` also cleans up bridge helpers.
-- **Doctor** — one screen checks all 29 tools plus wordlists and shows what is missing.
+- **Doctor** — one screen checks all 46 tools plus wordlists and shows what is missing.
 - **Consistent output** — every run gets its own timestamped folder under `~/osint-out/`.
 - **Bash wrapper included** — `osint.sh` installs as `osint` for one-liner usage without the TUI.
 
@@ -77,12 +77,23 @@ JENABSINT · 03:27 · tor:off · /data/data/com.termux/files/home/osint-out
 ### Bash wrapper
 
 ```bash
-osint user <username>     # sherlock + maigret + socialscan
-osint email <email>       # holehe + socialscan
+osint user <username>     # sherlock + maigret + socialscan + blackbird
+osint email <email>       # holehe + socialscan + blackbird
+osint gh <user|email>     # blackbird — 600+ site account search (CSV)
+osint ig <username>       # Instagram profile media (instaloader)
 osint domain <domain>     # subdomain enum + DNS + httpx + whois
-osint ip <ip|host>        # whois + reverse DNS + nmap top ports
+osint dns <domain>        # dnsrecon standard enumeration (+ zone transfer)
+osint twist <domain>      # dnstwist typosquat / look-alike domains
+osint ip <ip|host>        # whois + reverse DNS + nmap + ipinfo
 osint urls <domain>       # historical URLs (gau + waybackurls)
+osint waymore <domain>    # deep URL harvest (Wayback + CommonCrawl)
+osint links <url>         # links/params from pages & JS (xnLinkFinder)
 osint crawl <url>         # katana endpoint crawl
+osint dork <query>        # Google dorking (go-dork)
+osint waf <url>           # WAF vendor detection (wafw00f)
+osint cloud <keyword>     # public S3/Azure/GCP scan (cloud_enum)
+osint dark <query>        # OnionSearch via Tor
+osint leaks <dir>         # secret scanning (gitleaks)
 osint phone <number>      # phoneinfoga (E.164, e.g. +12025550123)
 osint meta <file>         # exiftool metadata
 osint harv <domain>       # theHarvester (otx, rapiddns, duckduckgo, crtsh)
@@ -95,14 +106,19 @@ osint check               # toolchain status
 
 | Area | Tools |
 |---|---|
-| Usernames | `sherlock`, `maigret`, `socialscan` |
-| Email | `holehe`, `socialscan` |
-| Subdomains | `subfinder`, `amass`, `assetfinder`, `crt.sh` |
-| DNS | `dnsx`, `dnsgen`, `dig` |
-| Probing / crawling | `httpx`, `naabu`, `katana`, `nuclei`, `ffuf` |
-| URL history | `gau`, `waybackurls` |
+| Usernames | `sherlock`, `maigret`, `blackbird`, `socialscan` |
+| Email | `holehe`, `socialscan`, `blackbird` |
+| Social profiles | `socid_extractor`, `instaloader` |
+| Subdomains | `subfinder`, `amass`, `assetfinder`, `crt.sh`, `alterx` |
+| DNS | `dnsx`, `dig`, `dnsrecon`, `dnstwist` |
+| TLS / CDN / ASN | `tlsx`, `cdncheck`, `asnmap`, `ipinfo` |
+| Probing / crawling | `httpx`, `naabu`, `katana`, `nuclei`, `ffuf`, `xnLinkFinder` |
+| URL history | `gau`, `waybackurls`, `waymore` |
 | People / hosts | `theHarvester`, `phoneinfoga` |
-| OSINT search | `shodan` |
+| Secrets / dorking | `gitleaks`, `go-dork` |
+| Dark web | `onionsearch` (via Tor) |
+| Cloud exposure | `cloud_enum` |
+| WAF detection | `wafw00f` |
 | Utilities | `whois`, `nmap`, `exiftool`, `jq`, `curl` |
 | Anonymity | `tor`, `proxychains4`, `snowflake-client`, `lyrebird` |
 
@@ -146,6 +162,8 @@ Adjust the Python version in the path as needed. After that, socialscan, maigret
 - **Doctor says a tool is missing** — install it; the TUI degrades gracefully and only skips that step.
 - **crt.sh returns 502** — that is crt.sh itself being overloaded, not the toolkit. Retry later.
 - **socialscan shows `QueryError - Could not retrieve token`** — platform-side rate limiting on your IP for GitHub/Instagram/Reddit; wait or route via Tor/proxy.
+- **asnmap needs a free ProjectDiscovery key** — run `asnmap -auth` once, or set `PDCP_API_KEY`. Everything else works without keys.
+- **onionsearch needs Tor running** — the TUI starts it automatically (direct, then Snowflake fallback); the `osint dark` wrapper expects Tor already listening on `127.0.0.1:9050`.
 - **theHarvester source lists** — engine names change between versions; the current defaults (`otx,rapiddns,duckduckgo,crtsh`) are validated against v5.0.0.
 
 ## Disclaimer
